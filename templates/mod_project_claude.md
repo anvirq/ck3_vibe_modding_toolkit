@@ -23,10 +23,13 @@ Each result includes a `parent_id`. Call `get_section(parent_id)` only when the 
 and you need the complete block (e.g. all options of an event, full decision logic).
 
 **Workflow for any new script element:**
-1. `search_wiki` — understand the concept and required fields
-2. `search_game_files` — find a vanilla example; use `get_section` if you need the full block
-3. Write the script, staying consistent with the examples found
-4. `validate_mod` — fix all ERRORs, re-validate until clean
+1. `search_wiki` — understand the concept, file format, required fields (good for "how does X work")
+2. `search_game_files` — find the actual vanilla implementation; use `category` filter when you know the type;
+   use `get_section(parent_id)` to get the full block when copying or overriding vanilla
+3. For specific hooks, triggers, or effects — skip wiki and go straight to `search_game_files`;
+   wiki rarely has the exact block, game files always do
+4. Write the script, staying consistent with the examples found
+5. `validate_mod` — fix all ERRORs, re-validate until clean
 
 `search_game_files` accepts an optional `category` filter. Common values:
 `events`, `decisions`, `traits`, `modifiers`, `scripted_effects`, `scripted_triggers`,
