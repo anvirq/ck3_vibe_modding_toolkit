@@ -1,0 +1,4 @@
+# One query per line. Lines starting with # are ignored.
+
+how to fire an event when a character dies
+add_trait effect example

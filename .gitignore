@@ -1,0 +1,9 @@
+.claude/
+.env
+__pycache__/
+/storage/
+
+/data/game/**
+!/data/game/.gitkeep
+/data/wiki/**
+!/data/wiki/.gitkeep
