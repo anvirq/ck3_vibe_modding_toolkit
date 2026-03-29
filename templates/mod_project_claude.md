@@ -8,24 +8,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## MCP tools available
 
-Three tools are available via the `ck3-modding-toolkit` MCP server.
+Four tools are available via the `ck3-modding-toolkit` MCP server.
 Always search before writing any script — Paradox's syntax is highly specific.
 
 | Tool | When to use |
 |---|---|
 | `search_wiki` | Understand a mechanic, look up available effects/triggers, check file format rules |
 | `search_game_files` | Find a real vanilla example of an event, decision, trait, modifier, etc. |
+| `get_section(parent_id)` | Read the full wiki section or game script block for a result from either search tool |
 | `validate_mod` | Validate the mod with ck3-tiger and get a filtered list of errors and warnings |
+
+`search_wiki` and `search_game_files` return focused 256-token excerpts — concise and never overflow context.
+Each result includes a `parent_id`. Call `get_section(parent_id)` only when the excerpt isn't enough
+and you need the complete block (e.g. all options of an event, full decision logic).
 
 **Workflow for any new script element:**
 1. `search_wiki` — understand the concept and required fields
-2. `search_game_files` — find a vanilla example to model after
+2. `search_game_files` — find a vanilla example; use `get_section` if you need the full block
 3. Write the script, staying consistent with the examples found
 4. `validate_mod` — fix all ERRORs, re-validate until clean
 
 `search_game_files` accepts an optional `category` filter. Common values:
 `events`, `decisions`, `traits`, `modifiers`, `scripted_effects`, `scripted_triggers`,
-`on_action`, `buildings`, `culture`, `religion`, `character_interactions`, `artifacts`
+`on_action`, `buildings`, `culture`, `religion`, `character_interactions`, `artifacts`, `gui`
 
 ## Mod file structure
 

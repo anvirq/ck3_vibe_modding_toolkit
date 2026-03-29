@@ -57,40 +57,47 @@ class HybridSearchIndex:
     def query(
         self,
         query_text: str,
-        top_k: int = 3,
+        top_k: int = 5,
         alpha: float = 0.5,
         filter_category: Optional[str] = None,
     ) -> list[dict]:
         """
-        Return top_k parent documents relevant to query_text.
+        Return top_k child chunks ranked by hybrid score.
+
+        Each result dict contains the child chunk text and metadata, plus
+        a `parent_id` field the caller can pass to `get_parent()` for full context.
 
         Parameters
         ----------
         query_text      : natural language query
-        top_k           : number of parent docs to return
+        top_k           : number of child chunks to return
         alpha           : vector weight (0 = BM25 only, 1 = vector only)
         filter_category : if set, restrict to this file_category (game only)
         """
-        candidate_k = top_k * 5  # over-fetch before dedup
+        candidate_k = top_k * 5  # over-fetch before dedup by parent
 
         # ── vector retrieval ─────────────────────────────────────────────────
         query_emb = self.embed_model._get_query_embedding(query_text)
 
-        chroma_kwargs: dict = {"query_embeddings": [query_emb], "n_results": candidate_k}
+        chroma_kwargs: dict = {"query_embeddings": [query_emb], "n_results": candidate_k,
+                               "include": ["documents", "metadatas", "distances"]}
         if filter_category:
             chroma_kwargs["where"] = {"file_category": filter_category}
 
         chroma_result = self.collection.query(**chroma_kwargs)
         vec_ids: list[str] = chroma_result["ids"][0]
-        # ChromaDB returns distances (lower = closer for cosine); convert to similarity
         vec_distances: list[float] = chroma_result["distances"][0]
+        vec_docs: list[str] = chroma_result["documents"][0]
+        vec_metas: list[dict] = chroma_result["metadatas"][0]
+
         vec_scores_raw = {cid: 1.0 - dist for cid, dist in zip(vec_ids, vec_distances)}
+        chroma_nodes = {cid: {"text": doc, "metadata": meta}
+                        for cid, doc, meta in zip(vec_ids, vec_docs, vec_metas)}
 
         # ── BM25 retrieval ───────────────────────────────────────────────────
         tokenized_query = query_text.lower().split()
         bm25_raw_scores = self._bm25.get_scores(tokenized_query)
 
-        # Apply category filter to BM25 results if needed
         bm25_candidates: list[tuple[str, float]] = []
         for node, score in zip(self._bm25_nodes, bm25_raw_scores):
             if filter_category and node["metadata"].get("file_category") != filter_category:
@@ -100,65 +107,54 @@ class HybridSearchIndex:
         bm25_candidates = bm25_candidates[:candidate_k]
         bm25_scores_raw = {cid: score for cid, score in bm25_candidates}
 
-        # ── normalise scores ─────────────────────────────────────────────────
-        def _normalise(scores: dict[str, float]) -> dict[str, float]:
+        # BM25 nodes as lookup (text + metadata already in memory)
+        bm25_node_map = {n["child_id"]: n for n in self._bm25_nodes}
+
+        # ── normalise + combine ───────────────────────────────────────────────
+        def _norm(scores: dict[str, float]) -> dict[str, float]:
             if not scores:
                 return {}
             max_s = max(scores.values()) or 1.0
             return {k: v / max_s for k, v in scores.items()}
 
-        vec_scores = _normalise(vec_scores_raw)
-        bm25_scores = _normalise(bm25_scores_raw)
+        vec_scores = _norm(vec_scores_raw)
+        bm25_scores = _norm(bm25_scores_raw)
 
-        # ── combine ──────────────────────────────────────────────────────────
         all_child_ids = set(vec_scores) | set(bm25_scores)
         combined: dict[str, float] = {
             cid: alpha * vec_scores.get(cid, 0.0) + (1 - alpha) * bm25_scores.get(cid, 0.0)
             for cid in all_child_ids
         }
 
-        # ── map child → parent (deduplicate, keep best child score per parent) ─
-        parent_scores: dict[str, float] = {}
-        child_to_parent = self._build_child_parent_map(all_child_ids)
-
+        # ── deduplicate by parent (best child per parent wins) ────────────────
+        best_per_parent: dict[str, tuple[str, float]] = {}  # parent_id → (child_id, score)
         for cid, score in combined.items():
-            pid = child_to_parent.get(cid)
-            if pid is None:
+            node = chroma_nodes.get(cid) or bm25_node_map.get(cid)
+            if not node:
                 continue
-            if pid not in parent_scores or score > parent_scores[pid]:
-                parent_scores[pid] = score
+            pid = node["metadata"].get("parent_id", "")
+            if pid not in best_per_parent or score > best_per_parent[pid][1]:
+                best_per_parent[pid] = (cid, score)
 
-        # ── rank parents ─────────────────────────────────────────────────────
-        ranked_pids = sorted(parent_scores, key=lambda x: parent_scores[x], reverse=True)[:top_k]
+        # ── rank and build results ────────────────────────────────────────────
+        ranked = sorted(best_per_parent.values(), key=lambda x: x[1], reverse=True)[:top_k]
 
         results = []
-        for pid in ranked_pids:
-            parent = self._parents.get(pid)
-            if parent:
-                results.append({**parent, "score": parent_scores[pid]})
+        for cid, score in ranked:
+            node = chroma_nodes.get(cid) or bm25_node_map.get(cid)
+            if not node:
+                continue
+            results.append({
+                "text": node["text"],
+                "score": score,
+                **node["metadata"],
+            })
 
         return results
 
-    def _build_child_parent_map(self, child_ids: set[str]) -> dict[str, str]:
-        """
-        Look up parent_id for each child_id.
-        First check BM25 node list, then fall back to ChromaDB metadata fetch.
-        """
-        mapping: dict[str, str] = {}
-
-        # Fast lookup from BM25 nodes (already in memory)
-        for node in self._bm25_nodes:
-            if node["child_id"] in child_ids:
-                mapping[node["child_id"]] = node["metadata"]["parent_id"]
-
-        # Remaining: fetch from ChromaDB
-        missing = child_ids - set(mapping)
-        if missing:
-            result = self.collection.get(ids=list(missing), include=["metadatas"])
-            for cid, meta in zip(result["ids"], result["metadatas"]):
-                mapping[cid] = meta["parent_id"]
-
-        return mapping
+    def get_parent(self, parent_id: str) -> Optional[dict]:
+        """Return the full parent document for a given parent_id, or None."""
+        return self._parents.get(parent_id)
 
 
 # ── singleton factory ─────────────────────────────────────────────────────────

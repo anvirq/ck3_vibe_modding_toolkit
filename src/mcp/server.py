@@ -26,6 +26,8 @@ mcp = fastmcp.FastMCP(
     instructions=(
         "Use search_wiki to look up CK3 modding concepts, syntax rules, and documentation. "
         "Use search_game_files to find concrete examples from Paradox's own game scripts. "
+        "Both search tools return focused 256-token excerpts with a parent_id. "
+        "Call get_section(parent_id) only when you need the full block or section for additional context. "
         "Use validate_mod to run ck3-tiger on the mod and get a filtered, actionable list of errors and warnings. "
         "Always validate after writing or modifying mod files."
     ),
@@ -41,24 +43,23 @@ _SEVERITY_ORDER = ["tips", "untidy", "warning", "error", "fatal"]
 # ── helpers ───────────────────────────────────────────────────────────────────
 
 def _format_results(results: list[dict]) -> str:
+    """Format child chunk results. Each result includes a parent_id for get_section()."""
     if not results:
         return "No results found."
 
     parts: list[str] = []
     for i, r in enumerate(results, 1):
-        header_parts = [f"[{i}]"]
-
-        if r.get("source_type") == "wiki":
-            header_parts.append(f"Wiki · {r.get('file_path', '')} · {r.get('section_title', '')}")
+        source = r.get("source_type", "")
+        if source == "wiki":
+            header = f"[{i}] Wiki · {r.get('file_path', '')} · {r.get('section_title', '')}"
         else:
-            cat = r.get("file_category", "")
-            block = r.get("block_name", "")
-            fp = r.get("file_path", "")
-            header_parts.append(f"Game · {cat} · {block}  ({fp})")
+            header = (f"[{i}] Game · {r.get('file_category', '')} · {r.get('block_name', '')}"
+                      f"  ({r.get('file_path', '')})")
 
-        parts.append(" ".join(header_parts))
-        parts.append(r.get("content", ""))
-        parts.append("")  # blank line between results
+        parts.append(header)
+        parts.append(f"parent_id: {r.get('parent_id', '')}")
+        parts.append(r.get("text", ""))
+        parts.append("")
 
     return "\n".join(parts).strip()
 
@@ -68,18 +69,18 @@ def _format_results(results: list[dict]) -> str:
 @mcp.tool()
 def search_wiki(
     query: str,
-    top_k: int = 3,
+    top_k: int = 5,
 ) -> str:
     """
     Search the CK3 modding wiki for documentation, syntax explanations, and guides.
 
-    Use this when you need to understand *how* to mod something:
-    concepts, available effects/triggers, file formats, etc.
+    Returns focused 256-token excerpts. Each result includes a parent_id —
+    call get_section(parent_id) to read the full wiki section if needed.
 
     Parameters
     ----------
     query   : what to search for (natural language)
-    top_k   : number of wiki sections to return (default 3)
+    top_k   : number of excerpts to return (default 5)
     """
     index = get_wiki_index()
     results = index.query(query_text=query, top_k=top_k)
@@ -89,19 +90,19 @@ def search_wiki(
 @mcp.tool()
 def search_game_files(
     query: str,
-    top_k: int = 3,
+    top_k: int = 5,
     category: Optional[str] = None,
 ) -> str:
     """
     Search CK3 game source files for concrete script examples.
 
-    Use this when you need real examples of how Paradox implements
-    events, decisions, traits, modifiers, GUI elements, etc.
+    Returns focused 256-token excerpts. Each result includes a parent_id —
+    call get_section(parent_id) to read the full block (event, decision, etc.) if needed.
 
     Parameters
     ----------
     query    : what to search for (natural language or script keywords)
-    top_k    : number of game blocks to return (default 3)
+    top_k    : number of excerpts to return (default 5)
     category : optional filter — one of: events, decisions, traits, modifiers,
                culture, religion, scripted_effects, scripted_triggers,
                on_action, buildings, gui, … (any subdirectory name)
@@ -113,6 +114,38 @@ def search_game_files(
         filter_category=category or None,
     )
     return _format_results(results)
+
+
+@mcp.tool()
+def get_section(parent_id: str, collection: str = "auto") -> str:
+    """
+    Retrieve the full source text for a parent_id returned by search_wiki or search_game_files.
+
+    Use this when a search excerpt is insufficient and you need the complete
+    wiki section or game script block for context.
+
+    Parameters
+    ----------
+    parent_id  : the parent_id field from a search result
+    collection : "wiki", "game", or "auto" (default — inferred from parent_id)
+    """
+    if collection == "auto":
+        collection = "wiki" if "data/wiki" in parent_id or "wiki" in parent_id.split("::")[0] else "game"
+
+    index = get_wiki_index() if collection == "wiki" else get_game_index()
+    parent = index.get_parent(parent_id)
+
+    if not parent:
+        return f"Not found: {parent_id!r}"
+
+    source = parent.get("source_type", "")
+    if source == "wiki":
+        header = f"Wiki · {parent.get('file_path', '')} · {parent.get('section_title', '')}"
+    else:
+        header = (f"Game · {parent.get('file_category', '')} · {parent.get('block_name', '')}"
+                  f"  ({parent.get('file_path', '')})")
+
+    return f"{header}\n\n{parent.get('content', '')}"
 
 
 @mcp.tool()

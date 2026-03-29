@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Generator
 
-from src.config import BASE_DIR
+from src.config import BASE_DIR, GAME_DATA_DIR
 
 log = logging.getLogger(__name__)
 
@@ -158,23 +158,21 @@ def parse_game_file(path: Path) -> list[dict]:
 
 def _derive_category(path: Path) -> str:
     """
-    Infer a human-readable category from the file's path.
+    Infer a human-readable category from the file's path relative to GAME_DATA_DIR.
 
     Examples:
       common/decisions/foo.txt  → "decisions"
       common/traits/bar.txt     → "traits"
-      events/birth_events.txt   → "events"
-      gui/widgets/foo.gui       → "gui"
       common/foo.info           → "common"
+      events/birth_events.txt   → "events"
+      gui/window/foo.gui        → "gui"   ← whole gui/ subtree maps to "gui"
     """
-    parts = path.parts
-    # Walk backwards until we find a meaningful directory
-    for part in reversed(parts[:-1]):
-        if part in {"common", "game", "data"}:
-            break
-        if not part.startswith("_") and part not in {"", "."}:
-            return part
-    # Fallback: second-to-last directory
-    if len(parts) >= 2:
-        return parts[-2]
-    return "unknown"
+    try:
+        rel = path.relative_to(GAME_DATA_DIR)
+    except ValueError:
+        return path.parts[-2] if len(path.parts) >= 2 else "unknown"
+
+    top = rel.parts[0]  # "common" | "events" | "gui"
+    if top == "common" and len(rel.parts) > 2:
+        return rel.parts[1]  # subdirectory of common (decisions, traits, …)
+    return top
