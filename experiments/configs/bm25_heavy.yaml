@@ -1,0 +1,28 @@
+name: bm25_heavy
+description: "Same chunking as baseline; BM25-dominant retrieval (alpha=0.2). Better for exact symbol lookup."
+
+data:
+  common_categories:
+    - decisions
+    - on_action
+    - scripted_triggers
+    - scripted_effects
+    - traits
+    - modifiers
+  include_events: true
+  include_gui: false
+  wiki_files:
+    - Event_modding.md
+    - Effects.md
+    - Effects_list.md
+    - Triggers.md
+    - Decisions_modding.md
+    - Scripted_effects.md
+
+chunking:
+  strategy: sentence_splitter
+  chunk_size: 256
+  chunk_overlap: 50
+
+retrieval:
+  alpha: 0.2

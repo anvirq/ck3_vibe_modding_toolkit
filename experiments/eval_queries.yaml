@@ -1,0 +1,86 @@
+# Evaluation queries for the CK3 modding RAG.
+#
+# Each query has:
+#   id          — unique identifier
+#   query       — the search string sent to the retriever
+#   collection  — "game" | "wiki"
+#   category    — optional category filter (game only)
+#   expected    — list of strings; a result is a hit if ANY expected string
+#                 appears (case-insensitive) in the chunk text or block_name
+
+queries:
+  # ── game file retrieval ───────────────────────────────────────────────────
+
+  - id: g01
+    query: "add prestige to character effect"
+    collection: game
+    expected: ["add_prestige"]
+
+  - id: g02
+    query: "on_travel_plan_complete on_action hook"
+    collection: game
+    category: on_action
+    expected: ["on_travel_plan_complete"]
+
+  - id: g03
+    query: "is_ruler scripted trigger check"
+    collection: game
+    category: scripted_triggers
+    expected: ["is_ruler"]
+
+  - id: g04
+    query: "trait with monthly prestige modifier"
+    collection: game
+    category: traits
+    expected: ["monthly_prestige"]
+
+  - id: g05
+    query: "decision is_shown trigger landed character"
+    collection: game
+    category: decisions
+    expected: ["is_shown", "is_landed"]
+
+  - id: g06
+    query: "birth event on_action"
+    collection: game
+    category: on_action
+    expected: ["on_birth", "birth"]
+
+  - id: g07
+    query: "commission artifact decision antiquarian"
+    collection: game
+    category: decisions
+    expected: ["commission_artifact", "antiquarian"]
+
+  - id: g08
+    query: "character event type scope root"
+    collection: game
+    category: events
+    expected: ["character_event", "type ="]
+
+  # ── wiki retrieval ────────────────────────────────────────────────────────
+
+  - id: w01
+    query: "how to fire an event on a character"
+    collection: wiki
+    expected: ["fire_on_action", "trigger_event", "fire"]
+
+  - id: w02
+    query: "event option name localization key"
+    collection: wiki
+    expected: ["option", "name =", ".a"]
+
+  - id: w03
+    query: "decision is_shown is_valid difference"
+    collection: wiki
+    expected: ["is_shown", "is_valid"]
+
+  - id: w04
+    query: "scripted trigger how to define reuse"
+    collection: wiki
+    expected: ["scripted_trigger", "scripted trigger"]
+
+  - id: w05
+    query: "add_character_modifier effect duration"
+    collection: wiki
+    expected: ["add_character_modifier", "duration"]

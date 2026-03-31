@@ -1,0 +1,28 @@
+name: sentence_128
+description: "Smaller chunks (128 tok) — more granular retrieval, more chunks per parent."
+
+data:
+  common_categories:
+    - decisions
+    - on_action
+    - scripted_triggers
+    - scripted_effects
+    - traits
+    - modifiers
+  include_events: true
+  include_gui: false
+  wiki_files:
+    - Event_modding.md
+    - Effects.md
+    - Effects_list.md
+    - Triggers.md
+    - Decisions_modding.md
+    - Scripted_effects.md
+
+chunking:
+  strategy: sentence_splitter
+  chunk_size: 128
+  chunk_overlap: 25
+
+retrieval:
+  alpha: 0.5
