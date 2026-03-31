@@ -60,6 +60,7 @@ class HybridSearchIndex:
         top_k: int = 5,
         alpha: float = 0.5,
         filter_category: Optional[str] = None,
+        path_prefix: Optional[str] = None,
     ) -> list[dict]:
         """
         Return top_k child chunks ranked by hybrid score.
@@ -73,8 +74,10 @@ class HybridSearchIndex:
         top_k           : number of child chunks to return
         alpha           : vector weight (0 = BM25 only, 1 = vector only)
         filter_category : if set, restrict to this file_category (game only)
+        path_prefix     : if set, restrict to files whose path contains this string
+                          (e.g. "events/travel_events/" or "common/on_action/")
         """
-        candidate_k = top_k * 5  # over-fetch before dedup by parent
+        candidate_k = top_k * 10  # over-fetch — path_prefix filtering may discard many
 
         # ── vector retrieval ─────────────────────────────────────────────────
         query_emb = self.embed_model._get_query_embedding(query_text)
@@ -90,6 +93,17 @@ class HybridSearchIndex:
         vec_docs: list[str] = chroma_result["documents"][0]
         vec_metas: list[dict] = chroma_result["metadatas"][0]
 
+        # Apply path_prefix filter post-fetch (ChromaDB has no prefix operator)
+        if path_prefix:
+            norm = path_prefix.replace("\\", "/")
+            filtered = [(cid, dist, doc, meta)
+                        for cid, dist, doc, meta
+                        in zip(vec_ids, vec_distances, vec_docs, vec_metas)
+                        if norm in meta.get("file_path", "").replace("\\", "/")]
+            vec_ids, vec_distances, vec_docs, vec_metas = (
+                [x[i] for x in filtered] for i in range(4)  # type: ignore[assignment]
+            )
+
         vec_scores_raw = {cid: 1.0 - dist for cid, dist in zip(vec_ids, vec_distances)}
         chroma_nodes = {cid: {"text": doc, "metadata": meta}
                         for cid, doc, meta in zip(vec_ids, vec_docs, vec_metas)}
@@ -98,9 +112,13 @@ class HybridSearchIndex:
         tokenized_query = query_text.lower().split()
         bm25_raw_scores = self._bm25.get_scores(tokenized_query)
 
+        norm_prefix = path_prefix.replace("\\", "/") if path_prefix else None
         bm25_candidates: list[tuple[str, float]] = []
         for node, score in zip(self._bm25_nodes, bm25_raw_scores):
-            if filter_category and node["metadata"].get("file_category") != filter_category:
+            meta = node["metadata"]
+            if filter_category and meta.get("file_category") != filter_category:
+                continue
+            if norm_prefix and norm_prefix not in meta.get("file_path", "").replace("\\", "/"):
                 continue
             bm25_candidates.append((node["child_id"], float(score)))
         bm25_candidates.sort(key=lambda x: x[1], reverse=True)

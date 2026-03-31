@@ -27,8 +27,10 @@ mcp = fastmcp.FastMCP(
     instructions=(
         "Use search_wiki to look up CK3 modding concepts, syntax rules, and documentation. "
         "Use search_game_files to find concrete examples from Paradox's own game scripts. "
-        "Both search tools return focused 256-token excerpts with a parent_id. "
+        "Both search tools return focused 256-token excerpts with a relevance score and parent_id. "
         "Call get_section(parent_id) only when you need the full block or section for additional context. "
+        "For exact id/symbol lookup (e.g. 'travel_start_event.1000'), use search_game_files with exact=True. "
+        "Use path_prefix to restrict search to a specific directory (e.g. 'travel_events' or 'common/on_action'). "
         "Use validate_mod to run ck3-tiger on the mod and get a filtered, actionable list of errors and warnings. "
         "Always validate after writing or modifying mod files."
     ),
@@ -47,12 +49,14 @@ def _format_results(results: list[dict]) -> str:
 
     parts: list[str] = []
     for i, r in enumerate(results, 1):
+        score = r.get("score", 0.0)
         source = r.get("source_type", "")
         if source == "wiki":
-            header = f"[{i}] Wiki · {r.get('file_path', '')} · {r.get('section_title', '')}"
+            header = (f"[{i}] score={score:.2f}  Wiki · {r.get('file_path', '')}"
+                      f" · {r.get('section_title', '')}")
         else:
-            header = (f"[{i}] Game · {r.get('file_category', '')} · {r.get('block_name', '')}"
-                      f"  ({r.get('file_path', '')})")
+            header = (f"[{i}] score={score:.2f}  Game · {r.get('file_category', '')}"
+                      f" · {r.get('block_name', '')}  ({r.get('file_path', '')})")
 
         parts.append(header)
         parts.append(f"parent_id: {r.get('parent_id', '')}")
@@ -90,6 +94,8 @@ def search_game_files(
     query: str,
     top_k: int = 5,
     category: Optional[str] = None,
+    path_prefix: Optional[str] = None,
+    exact: bool = False,
 ) -> str:
     """
     Search CK3 game source files for concrete script examples.
@@ -99,17 +105,22 @@ def search_game_files(
 
     Parameters
     ----------
-    query    : what to search for (natural language or script keywords)
-    top_k    : number of excerpts to return (default 5)
-    category : optional filter — one of: events, decisions, traits, modifiers,
-               culture, religion, scripted_effects, scripted_triggers,
-               on_action, buildings, gui, … (any subdirectory name)
+    query       : what to search for (natural language or script keywords)
+    top_k       : number of excerpts to return (default 5)
+    category    : restrict to a file category — events, decisions, traits, modifiers,
+                  scripted_effects, scripted_triggers, on_action, buildings, gui, …
+    path_prefix : restrict to files whose path contains this substring,
+                  e.g. "travel_events" or "common/on_action"
+    exact       : if True, use BM25-dominant scoring (alpha=0.1) — best for looking up
+                  exact ids/symbols like "travel_start_event.1000" or "on_travel_plan_complete"
     """
     index = get_game_index()
     results = index.query(
         query_text=query,
         top_k=top_k,
+        alpha=0.1 if exact else 0.5,
         filter_category=category or None,
+        path_prefix=path_prefix or None,
     )
     return _format_results(results)
 

@@ -14,7 +14,7 @@ Always search before writing any script — Paradox's syntax is highly specific.
 | Tool | When to use |
 |---|---|
 | `search_wiki` | Understand a mechanic, look up available effects/triggers, check file format rules |
-| `search_game_files` | Find a real vanilla example of an event, decision, trait, modifier, etc. |
+| `search_game_files` | Find a real vanilla example of an event, decision, trait, modifier, etc. Supports `category`, `path_prefix`, and `exact` filters |
 | `get_section(parent_id)` | Read the full wiki section or game script block for a result from either search tool |
 | `validate_mod` | Validate the mod with ck3-tiger and get a filtered list of errors and warnings |
 
@@ -27,7 +27,8 @@ and you need the complete block (e.g. all options of an event, full decision log
 2. `search_game_files` — find the actual vanilla implementation; use `category` filter when you know the type;
    use `get_section(parent_id)` to get the full block when copying or overriding vanilla
 3. For specific hooks, triggers, or effects — skip wiki and go straight to `search_game_files`;
-   wiki rarely has the exact block, game files always do
+   wiki rarely has the exact block, game files always do.
+   For exact id/symbol lookup use `exact=True`; narrow to a folder with `path_prefix="travel_events"`
 4. Write the script, staying consistent with the examples found
 5. `validate_mod` — fix all ERRORs, re-validate until clean
 
