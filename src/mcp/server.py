@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 import fastmcp
 
+from src.config import default_ck3_game_path, resolve_ck3_tiger_executable
 from src.retrieval.hybrid_search import get_game_index, get_wiki_index
 
 mcp = fastmcp.FastMCP(
@@ -32,9 +33,6 @@ mcp = fastmcp.FastMCP(
         "Always validate after writing or modifying mod files."
     ),
 )
-
-_TIGER_EXE = r"C:\Projects\ck3-tiger\ck3-tiger.exe"
-_DEFAULT_GAME_PATH = r"C:\Program Files (x86)\Steam\steamapps\common\Crusader Kings III\game"
 
 # Severity levels ordered from least to most severe
 _SEVERITY_ORDER = ["tips", "untidy", "warning", "error", "fatal"]
@@ -151,7 +149,7 @@ def get_section(parent_id: str, collection: str = "auto") -> str:
 @mcp.tool()
 def validate_mod(
     mod_path: str,
-    game_path: str = _DEFAULT_GAME_PATH,
+    game_path: Optional[str] = None,
     min_severity: str = "warning",
 ) -> str:
     """
@@ -162,23 +160,37 @@ def validate_mod(
 
     Parameters
     ----------
-    mod_path     : path to the mod's .mod file (e.g. C:\\mods\\mymod\\mymod.mod)
-    game_path    : path to the CK3 game directory (default: Steam install on Windows)
+    mod_path     : path to the mod's .mod file
+    game_path    : path to the CK3 ``game`` directory (default: ``CK3_GAME_PATH`` in ``.env``)
     min_severity : minimum severity to include — tips | untidy | warning | error (default: warning)
     """
     mod_file = Path(mod_path)
     if not mod_file.exists():
         return f"Error: .mod file not found: {mod_path}"
 
+    tiger_exe = resolve_ck3_tiger_executable()
+    if not tiger_exe:
+        return (
+            "Error: ck3-tiger not found. Set CK3_TIGER_EXE to the binary path "
+            "or install ck3-tiger on PATH."
+        )
+
+    resolved_game = (game_path or "").strip() or default_ck3_game_path()
+    if not resolved_game:
+        return (
+            "Error: CK3 game directory not set. Pass game_path or set CK3_GAME_PATH "
+            "in .env (path to the vanilla .../Crusader Kings III/game folder)."
+        )
+
     try:
         result = subprocess.run(
-            [_TIGER_EXE, "--json", "--game", game_path, str(mod_file)],
+            [tiger_exe, "--json", "--game", resolved_game, str(mod_file)],
             capture_output=True,
             text=True,
             timeout=120,
         )
     except FileNotFoundError:
-        return f"Error: ck3-tiger not found at {_TIGER_EXE}"
+        return f"Error: ck3-tiger not found at {tiger_exe!r}"
     except subprocess.TimeoutExpired:
         return "Error: ck3-tiger timed out after 120s."
 

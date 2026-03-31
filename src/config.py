@@ -1,5 +1,7 @@
 import os
+import shutil
 from pathlib import Path
+from typing import Optional
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -50,3 +52,17 @@ WIKI_COLLECTION = "ck3_wiki"
 # Subdirs of data/game/ to index (skip localization, music, sound, etc.)
 GAME_DIRS_TO_INDEX = ["common", "events", "gui"]
 GAME_FILE_EXTENSIONS = {".txt", ".info", ".gui"}
+
+
+def resolve_ck3_tiger_executable() -> Optional[str]:
+    """ck3-tiger path: ``CK3_TIGER_EXE`` if set, else ``ck3-tiger`` on ``PATH``."""
+    v = (os.getenv("CK3_TIGER_EXE") or "").strip()
+    if v:
+        return v
+    return shutil.which("ck3-tiger")
+
+
+def default_ck3_game_path() -> Optional[str]:
+    """Vanilla ``game`` directory from ``CK3_GAME_PATH``, if set."""
+    v = (os.getenv("CK3_GAME_PATH") or "").strip()
+    return v or None
