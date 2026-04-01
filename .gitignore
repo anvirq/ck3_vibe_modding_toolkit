@@ -7,3 +7,7 @@ __pycache__/
 !/data/game/.gitkeep
 /data/wiki/**
 !/data/wiki/.gitkeep
+
+# Experiments: build outputs (BM25/Chroma), parent JSON with full game text, eval dumps
+# with retrieved excerpts — derivative of Paradox/community corpus; keep out of public repos.
+/experiments/results/

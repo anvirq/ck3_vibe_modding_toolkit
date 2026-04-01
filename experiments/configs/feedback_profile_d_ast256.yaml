@@ -1,0 +1,24 @@
+name: feedback_profile_d_ast256
+description: "Profile D + AST chunking 256."
+
+data:
+  roots:
+    vanilla:
+      - common/on_action
+      - events/travel_events
+      - common/scripted_guis
+      - gui/window_army_select_commander.gui
+    mod:
+      - common
+      - events
+      - gui
+      - localization
+  wiki_files: []
+
+chunking:
+  strategy: ast
+  chunk_size: 256
+  chunk_overlap: 0
+
+retrieval:
+  alpha: 0.5

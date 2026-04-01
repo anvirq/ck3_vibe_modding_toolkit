@@ -1,0 +1,5 @@
+Event_modding.md
+Effects.md
+Triggers.md
+Decisions_modding.md
+Scripted_effects.md

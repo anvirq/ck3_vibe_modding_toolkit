@@ -1,0 +1,19 @@
+name: feedback_profile_b_ast512
+description: "Profile B + AST chunking 512."
+
+data:
+  roots:
+    vanilla:
+      - common/on_action
+      - events/travel_events
+      - common/scripted_guis
+      - gui/window_army_select_commander.gui
+  wiki_files: all
+
+chunking:
+  strategy: ast
+  chunk_size: 512
+  chunk_overlap: 0
+
+retrieval:
+  alpha: 0.5

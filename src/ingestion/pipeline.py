@@ -8,7 +8,8 @@ What it does
 ------------
 1. Walk game files (common/, events/, gui/) and wiki/ markdown files.
 2. Parse into parent documents using domain-specific parsers.
-3. Split each parent into 256-token child chunks (50-token overlap).
+3. Split each parent into child chunks (default: AST-aware for game scripts, SentenceSplitter
+   for wiki; sizes from ``src.config``).
 4. Embed child chunks via Qwen3/OpenRouter and store in ChromaDB.
 5. Build + persist a BM25 index for each collection.
 6. Persist parent texts to storage/parents/ for retrieval post-processing.
@@ -20,8 +21,6 @@ import time
 import logging
 from pathlib import Path
 
-import tiktoken
-from llama_index.core.node_parser import SentenceSplitter
 import chromadb
 
 from src.config import (
@@ -37,8 +36,10 @@ from src.config import (
     WIKI_COLLECTION,
     CHUNK_SIZE,
     CHUNK_OVERLAP,
+    CHUNKING_STRATEGY,
     EMBEDDING_MODEL,
 )
+from src.ingestion.chunking import chunk_parent
 from src.ingestion.clausewitz_parser import parse_game_file
 from src.ingestion.wiki_parser import parse_wiki_file
 from src.retrieval.embeddings import QwenOpenRouterEmbedding
@@ -46,25 +47,8 @@ from src.retrieval.embeddings import QwenOpenRouterEmbedding
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# tiktoken tokenizer for chunk size measurement
-_enc = tiktoken.get_encoding("cl100k_base")
-
 
 # ── helpers ──────────────────────────────────────────────────────────────────
-
-def _chunk_text(text: str, chunk_size: int = CHUNK_SIZE, overlap: int = CHUNK_OVERLAP) -> list[str]:
-    """Split text into token-bounded chunks using LlamaIndex SentenceSplitter."""
-    splitter = SentenceSplitter(
-        chunk_size=chunk_size,
-        chunk_overlap=overlap,
-        tokenizer=_enc.encode,
-    )
-    # SentenceSplitter works on Document/Node; use get_nodes_from_documents
-    from llama_index.core import Document
-    doc = Document(text=text)
-    nodes = splitter.get_nodes_from_documents([doc])
-    return [n.get_content() for n in nodes]
-
 
 def _collect_game_files() -> list[Path]:
     files = []
@@ -127,7 +111,7 @@ def _build_and_save_bm25(child_nodes: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump(payload, f)
-    log.info("BM25 index saved → %s (%d docs)", path, len(child_nodes))
+    log.info("BM25 index saved -> %s (%d docs)", path, len(child_nodes))
 
 
 # ── parent store ──────────────────────────────────────────────────────────────
@@ -137,7 +121,7 @@ def _save_parents(parents: list[dict], path: Path) -> None:
     parent_map = {p["parent_id"]: p for p in parents}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(parent_map, f, ensure_ascii=False)
-    log.info("Parent store saved → %s (%d entries)", path, len(parent_map))
+    log.info("Parent store saved -> %s (%d entries)", path, len(parent_map))
 
 
 # ── main pipeline ─────────────────────────────────────────────────────────────
@@ -150,13 +134,20 @@ def _process_collection(
     bm25_path: Path,
     parents_path: Path,
 ) -> None:
-    log.info("[%s] %d parent docs → chunking...", name, len(parents))
+    log.info(
+        "[%s] %d parent docs -> chunking (strategy=%s size=%d overlap=%d)...",
+        name,
+        len(parents),
+        CHUNKING_STRATEGY,
+        CHUNK_SIZE,
+        CHUNK_OVERLAP,
+    )
 
     child_nodes: list[dict] = []
     child_idx = 0
 
     for parent in parents:
-        chunks = _chunk_text(parent["content"])
+        chunks = chunk_parent(parent, CHUNKING_STRATEGY, CHUNK_SIZE, CHUNK_OVERLAP)
         for chunk_text in chunks:
             if not chunk_text.strip():
                 continue
@@ -179,12 +170,17 @@ def _process_collection(
             )
             child_idx += 1
 
+    if not child_nodes:
+        log.warning("[%s] 0 child chunks; skipping embeddings and BM25", name)
+        _save_parents(parents, parents_path)
+        return
+
     # ── skip already-embedded chunks (resume after crash) ────────────────────
     existing = chroma_collection.get(include=[])
     existing_ids = set(existing["ids"])
     pending_nodes = [n for n in child_nodes if n["child_id"] not in existing_ids]
     log.info(
-        "[%s] %d child chunks total — %d already embedded, %d pending",
+        "[%s] %d child chunks total - %d already embedded, %d pending",
         name, len(child_nodes), len(existing_ids), len(pending_nodes),
     )
 
@@ -210,6 +206,13 @@ def _process_collection(
 
 def run() -> None:
     STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+
+    log.info(
+        "Chunking: strategy=%s chunk_size=%d overlap=%d",
+        CHUNKING_STRATEGY,
+        CHUNK_SIZE,
+        CHUNK_OVERLAP,
+    )
 
     embed_model = QwenOpenRouterEmbedding()
     chroma_client = chromadb.PersistentClient(path=str(CHROMA_DIR))

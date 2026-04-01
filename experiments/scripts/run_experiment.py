@@ -3,6 +3,8 @@ Run an indexing experiment with a given YAML config.
 
 Usage:
     py experiments/scripts/run_experiment.py experiments/configs/baseline.yaml
+    py experiments/scripts/run_experiment.py experiments/configs/baseline.yaml --subset narrow
+    py experiments/scripts/run_experiment.py experiments/configs/narrow_baseline.yaml --game-subset narrow --wiki-subset narrow
 
 Creates a separate ChromaDB collection and stores BM25/parents under
 experiments/results/<name>/.
@@ -13,18 +15,17 @@ import logging
 import pickle
 import sys
 import time
+import argparse
 from pathlib import Path
 
 # project root on path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import chromadb
-import tiktoken
-from llama_index.core import Document
-from llama_index.core.node_parser import SentenceSplitter
 from rank_bm25 import BM25Okapi
 
 from src.config import CHROMA_DIR
+from src.ingestion.chunking import chunk_parent
 from src.ingestion.clausewitz_parser import parse_game_file
 from src.ingestion.experiment_config import ExperimentConfig
 from src.ingestion.wiki_parser import parse_wiki_file
@@ -33,24 +34,47 @@ from src.retrieval.embeddings import QwenOpenRouterEmbedding
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-_enc = tiktoken.get_encoding("cl100k_base")
+SUBSETS_GAME_DIR = Path(__file__).parent.parent / "subsets" / "game"
+SUBSETS_WIKI_DIR = Path(__file__).parent.parent / "subsets" / "wiki"
 
 
-def chunk_text(text: str, cfg: ExperimentConfig) -> list[str]:
-    splitter = SentenceSplitter(
-        chunk_size=cfg.chunk_size,
-        chunk_overlap=cfg.chunk_overlap,
-        tokenizer=_enc.encode,
-    )
-    nodes = splitter.get_nodes_from_documents([Document(text=text)])
-    return [n.get_content() for n in nodes]
+def load_subset_file(path: Path) -> list[str]:
+    with open(path, "r", encoding="utf-8") as f:
+        lines = [line.split("#", 1)[0].strip() for line in f]
+    return [line for line in lines if line]
+
+
+def resolve_subset_arg(arg: str, subset_dir: Path, label: str) -> Path:
+    p = Path(arg)
+    if p.exists():
+        return p
+    if p.suffix:
+        raise FileNotFoundError(f"{label} subset file not found: {arg}")
+    candidate = subset_dir / f"{arg}.txt"
+    if candidate.exists():
+        return candidate
+    raise FileNotFoundError(f"Unknown {label} subset '{arg}' (expected: {candidate})")
+
+
+def resolve_named_subset(name: str) -> tuple[Path | None, Path | None]:
+    game_path = SUBSETS_GAME_DIR / f"{name}.txt"
+    wiki_path = SUBSETS_WIKI_DIR / f"{name}.txt"
+    game_found = game_path if game_path.exists() else None
+    wiki_found = wiki_path if wiki_path.exists() else None
+    if not game_found and not wiki_found:
+        raise FileNotFoundError(
+            f"Unknown subset '{name}' (checked {game_path} and {wiki_path})"
+        )
+    return game_found, wiki_found
 
 
 def build_child_nodes(parents: list[dict], cfg: ExperimentConfig) -> list[dict]:
     child_nodes: list[dict] = []
     child_idx = 0
     for parent in parents:
-        for chunk in chunk_text(parent["content"], cfg):
+        for chunk in chunk_parent(
+            parent, cfg.chunking_strategy, cfg.chunk_size, cfg.chunk_overlap
+        ):
             if not chunk.strip():
                 continue
             meta = {
@@ -89,14 +113,14 @@ def save_bm25(nodes: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "wb") as f:
         pickle.dump({"bm25": bm25, "nodes": nodes}, f)
-    log.info("BM25 saved → %s (%d docs)", path, len(nodes))
+    log.info("BM25 saved -> %s (%d docs)", path, len(nodes))
 
 
 def save_parents(parents: list[dict], path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump({p["parent_id"]: p for p in parents}, f, ensure_ascii=False)
-    log.info("Parents saved → %s (%d)", path, len(parents))
+    log.info("Parents saved -> %s (%d)", path, len(parents))
 
 
 def run(cfg: ExperimentConfig) -> None:
@@ -134,7 +158,12 @@ def run(cfg: ExperimentConfig) -> None:
         log.info("[%s] %d parent blocks", label, len(parents))
 
         child_nodes = build_child_nodes(parents, cfg)
-        log.info("[%s] %d child chunks → embedding...", label, len(child_nodes))
+        log.info("[%s] %d child chunks -> embedding...", label, len(child_nodes))
+
+        if not child_nodes:
+            log.warning("[%s] 0 child chunks; skipping embeddings and BM25", label)
+            save_parents(parents, parents_path)
+            continue
 
         collection = chroma.get_or_create_collection(
             name=collection_name,
@@ -161,8 +190,39 @@ def run(cfg: ExperimentConfig) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("Usage: py experiments/scripts/run_experiment.py <config.yaml>")
-        sys.exit(1)
-    cfg = ExperimentConfig.from_yaml(sys.argv[1])
+    parser = argparse.ArgumentParser()
+    parser.add_argument("config", help="Path to experiment YAML config")
+    parser.add_argument(
+        "--subset",
+        help="Subset name. If found in subsets/game and/or subsets/wiki, applies to those sources automatically.",
+    )
+    parser.add_argument(
+        "--game-subset",
+        help="Subset name (from experiments/subsets/game/<name>.txt) or explicit .txt path",
+    )
+    parser.add_argument(
+        "--wiki-subset",
+        help="Subset name (from experiments/subsets/wiki/<name>.txt) or explicit .txt path",
+    )
+    args = parser.parse_args()
+
+    cfg = ExperimentConfig.from_yaml(args.config)
+    if args.subset:
+        game_subset_path, wiki_subset_path = resolve_named_subset(args.subset)
+        if game_subset_path:
+            cfg.game_files = load_subset_file(game_subset_path)
+            log.info("Using game subset: %s (%d files)", game_subset_path, len(cfg.game_files))
+        if wiki_subset_path:
+            cfg.wiki_files = load_subset_file(wiki_subset_path)
+            log.info("Using wiki subset: %s (%d files)", wiki_subset_path, len(cfg.wiki_files))
+
+    if args.game_subset:
+        subset_path = resolve_subset_arg(args.game_subset, SUBSETS_GAME_DIR, "game")
+        cfg.game_files = load_subset_file(subset_path)
+        log.info("Using game subset: %s (%d files)", subset_path, len(cfg.game_files))
+    if args.wiki_subset:
+        subset_path = resolve_subset_arg(args.wiki_subset, SUBSETS_WIKI_DIR, "wiki")
+        cfg.wiki_files = load_subset_file(subset_path)
+        log.info("Using wiki subset: %s (%d files)", subset_path, len(cfg.wiki_files))
+
     run(cfg)

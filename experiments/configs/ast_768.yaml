@@ -1,0 +1,28 @@
+name: ast_768
+description: "AST-aware chunking (768 tok) — larger chunks preserve more context per retrieval unit. Fewer splits means more complete option/trigger blocks in a single chunk."
+
+data:
+  common_categories:
+    - decisions
+    - on_action
+    - scripted_triggers
+    - scripted_effects
+    - traits
+    - modifiers
+  include_events: true
+  include_gui: false
+  wiki_files:
+    - Event_modding.md
+    - Effects.md
+    - Effects_list.md
+    - Triggers.md
+    - Decisions_modding.md
+    - Scripted_effects.md
+
+chunking:
+  strategy: ast
+  chunk_size: 768
+  chunk_overlap: 0
+
+retrieval:
+  alpha: 0.5

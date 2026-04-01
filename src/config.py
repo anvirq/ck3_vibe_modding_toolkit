@@ -10,6 +10,8 @@ BASE_DIR = Path(__file__).parent.parent
 DATA_DIR = BASE_DIR / "data"
 GAME_DATA_DIR = DATA_DIR / "game"
 WIKI_DATA_DIR = DATA_DIR / "wiki"
+# Optional mod content for experiments (Profile C / D). Not part of vanilla game tree.
+MOD_DATA_DIR = DATA_DIR / "mod"
 STORAGE_DIR = BASE_DIR / "storage"
 CHROMA_DIR = STORAGE_DIR / "chroma"
 BM25_DIR = STORAGE_DIR / "bm25"
@@ -43,8 +45,26 @@ EMBEDDING_QUERY_INSTRUCTION_WIKI = os.getenv(
     "from modding wiki documentation (guides, concepts, file formats, effects, triggers, scripting reference).",
 ).strip()
 
-CHUNK_SIZE = 256   # tokens
-CHUNK_OVERLAP = 50  # tokens
+# Chunking: default matches feedback-tuned "ast_256" (AST for game, SentenceSplitter for wiki).
+# Override via env, e.g. CHUNKING_STRATEGY=sentence_splitter CHUNK_OVERLAP=50
+def _env_int(name: str, default: int) -> int:
+    v = os.getenv(name)
+    if v is None or not str(v).strip():
+        return default
+    return int(str(v).strip())
+
+
+def _env_str(name: str, default: str) -> str:
+    v = os.getenv(name)
+    if v is None or not str(v).strip():
+        return default
+    return str(v).strip()
+
+
+# "ast" = tree-sitter chunks for Clausewitz game blocks; "sentence_splitter" = baseline SentenceSplitter everywhere
+CHUNKING_STRATEGY = _env_str("CHUNKING_STRATEGY", "ast").lower()
+CHUNK_SIZE = _env_int("CHUNK_SIZE", 256)  # tokens
+CHUNK_OVERLAP = _env_int("CHUNK_OVERLAP", 0)  # tokens; wiki + AST fallback; use 50 with sentence_splitter
 
 GAME_COLLECTION = "ck3_game"
 WIKI_COLLECTION = "ck3_wiki"

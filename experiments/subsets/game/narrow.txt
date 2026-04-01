@@ -1,0 +1,9 @@
+common/decisions/00_artifact_decisions.txt
+common/decisions/00_lifestyle_decisions.txt
+common/decisions/00_dynasty_decisions.txt
+common/on_action/travel_on_actions.txt
+common/on_action/child_birth_on_actions.txt
+common/scripted_triggers/00_scripted_triggers.txt
+common/scripted_effects/00_activity_effects.txt
+common/traits/00_traits.txt
+events/birth_events.txt

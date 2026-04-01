@@ -19,7 +19,7 @@ from src.ingestion.experiment_config import ExperimentConfig
 def load_results(cfg: ExperimentConfig) -> dict:
     path = cfg.results_dir / "eval_results.json"
     if not path.exists():
-        print(f"[!] No results for '{cfg.name}' — run evaluate.py first: {path}")
+        print(f"[!] No results for '{cfg.name}' - run evaluate.py first: {path}")
         sys.exit(1)
     with open(path, encoding="utf-8") as f:
         return json.load(f)

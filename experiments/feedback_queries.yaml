@@ -1,0 +1,47 @@
+# Field RAG feedback suite — same queries across indexing profiles.
+# See experiments/feedback_gold.yaml for grading rules.
+
+queries:
+  - id: fq1
+    query: "Where is on_travel_plan_complete defined?"
+    collection: game
+    category: on_action
+
+  - id: fq2
+    query: "Where is travel_start_event.1000 defined?"
+    collection: game
+
+  - id: fq3
+    query: "Where is travel_completion_event.1000 defined in the mod?"
+    collection: game
+
+  - id: fq4
+    query: "Why might non-rulers not get travel completion handling?"
+    collection: game
+    category: on_action
+
+  - id: fq5
+    query: "Which GUI click executes commander appointment scripted gui?"
+    collection: game
+
+  - id: fq6
+    query: "Where are ttc_pending_army and ttc_pending_army_owner set and consumed?"
+    collection: game
+
+  - id: fq7
+    query: "Where is text for I am ready to command defined and used?"
+    collection: game
+
+  - id: fq8
+    query: "How is commander assignment triggered on final travel arrival?"
+    collection: game
+    category: on_action
+
+  - id: fq9
+    query: "Where is validate_mod defined?"
+    collection: game
+
+  - id: fq10
+    query: "How does travel start popup work?"
+    collection: game
+    category: on_action

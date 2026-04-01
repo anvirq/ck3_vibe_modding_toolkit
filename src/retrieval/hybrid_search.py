@@ -9,6 +9,7 @@ Returns a list of parent document dicts (deduplicated) ranked by combined score.
 
 import json
 import pickle
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -25,6 +26,13 @@ from src.config import (
     EMBEDDING_QUERY_INSTRUCTION_WIKI,
 )
 from src.retrieval.embeddings import QwenOpenRouterEmbedding
+
+
+_WORD_RE = re.compile(r"[a-zA-Z_][a-zA-Z0-9_]{2,}")
+
+
+def _query_terms(query: str) -> set[str]:
+    return {m.group(0).lower() for m in _WORD_RE.finditer(query)}
 
 
 class HybridSearchIndex:
@@ -61,6 +69,7 @@ class HybridSearchIndex:
         alpha: float = 0.5,
         filter_category: Optional[str] = None,
         path_prefix: Optional[str] = None,
+        rerank: bool = False,
     ) -> list[dict]:
         """
         Return top_k child chunks ranked by hybrid score.
@@ -167,6 +176,31 @@ class HybridSearchIndex:
                 "score": score,
                 **node["metadata"],
             })
+
+        if rerank and results:
+            terms = _query_terms(query_text)
+            if terms:
+                def _rerank_key(row: dict) -> tuple[int, int, int, float]:
+                    hay = (
+                        row.get("text", "")
+                        + " "
+                        + row.get("block_name", "")
+                        + " "
+                        + row.get("section_title", "")
+                    ).lower()
+                    overlap = sum(1 for t in terms if t in hay)
+                    category_bonus = 1 if (
+                        filter_category
+                        and row.get("file_category", "") == filter_category
+                    ) else 0
+                    path_bonus = 1 if (
+                        path_prefix
+                        and path_prefix.replace("\\", "/").lower()
+                        in row.get("file_path", "").replace("\\", "/").lower()
+                    ) else 0
+                    return (overlap, category_bonus, path_bonus, float(row.get("score", 0.0)))
+
+                results = sorted(results, key=_rerank_key, reverse=True)
 
         return results
 

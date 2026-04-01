@@ -30,14 +30,40 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
 import yaml
 
-from src.config import GAME_DATA_DIR, WIKI_DATA_DIR, GAME_FILE_EXTENSIONS
+from src.config import GAME_DATA_DIR, WIKI_DATA_DIR, MOD_DATA_DIR, GAME_FILE_EXTENSIONS
 
 EXPERIMENTS_DIR = Path(__file__).parent.parent.parent / "experiments"
 RESULTS_DIR = EXPERIMENTS_DIR / "results"
+
+
+def _collect_tree_files(base: Path, roots: list[str]) -> list[Path]:
+    out: list[Path] = []
+    for root in roots:
+        rel = root.replace("\\", "/").strip("/")
+        p = (base / rel).resolve()
+        if not p.exists():
+            continue
+        if p.is_file():
+            out.append(p)
+            continue
+        for ext in GAME_FILE_EXTENSIONS:
+            out.extend(p.rglob(f"*{ext}"))
+    return out
+
+
+def _load_file_list(base_dir: Path, relative_path: str) -> list[str]:
+    """
+    Load newline-delimited relative file paths from a text file.
+    Empty lines and comments ('# ...') are ignored.
+    """
+    list_path = (base_dir / relative_path).resolve()
+    with open(list_path, "r", encoding="utf-8") as f:
+        lines = [line.split("#", 1)[0].strip() for line in f]
+    return [line for line in lines if line]
 
 
 @dataclass
@@ -52,6 +78,14 @@ class ExperimentConfig:
     include_events: bool = True
     include_gui: bool = False
     wiki_files: Union[list[str], str] = "all"   # list of filenames or "all"
+    # If set, overrides all category/event/gui discovery with an explicit file list.
+    # Paths are relative to GAME_DATA_DIR (e.g. "common/decisions/00_artifact_decisions.txt").
+    game_files: Optional[list[str]] = None
+    # Optional path to a newline-delimited file list. Relative to config YAML file.
+    game_files_txt: Optional[str] = None
+    # Index only these subtrees (relative paths). Vanilla: under data/game/. Mod: under data/mod/.
+    vanilla_roots: list[str] = field(default_factory=list)
+    mod_roots: list[str] = field(default_factory=list)
 
     # ── chunking ──────────────────────────────────────────────────────────────
     chunking_strategy: str = "sentence_splitter"  # "sentence_splitter" | "ast"
@@ -93,6 +127,12 @@ class ExperimentConfig:
     # ── file collection ───────────────────────────────────────────────────────
 
     def game_file_paths(self) -> list[Path]:
+        if self.game_files is not None:
+            return [p for f in self.game_files if (p := GAME_DATA_DIR / f).exists()]
+        if self.vanilla_roots or self.mod_roots:
+            files = _collect_tree_files(GAME_DATA_DIR, self.vanilla_roots)
+            files.extend(_collect_tree_files(MOD_DATA_DIR, self.mod_roots))
+            return sorted(set(files), key=lambda x: str(x))
         files: list[Path] = []
         for cat in self.common_categories:
             base = GAME_DATA_DIR / "common" / cat
@@ -118,12 +158,22 @@ class ExperimentConfig:
 
     @classmethod
     def from_yaml(cls, path: Union[str, Path]) -> "ExperimentConfig":
+        path = Path(path)
         with open(path, "r", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
         data = raw.get("data", {})
         chunking = raw.get("chunking", {})
         retrieval = raw.get("retrieval", {})
+
+        game_files = data.get("game_files", None)
+        game_files_txt = data.get("game_files_txt", None)
+        if game_files_txt:
+            game_files = _load_file_list(path.parent, game_files_txt)
+
+        roots = data.get("roots", {})
+        vanilla_roots = roots.get("vanilla", data.get("vanilla_roots", []))
+        mod_roots = roots.get("mod", data.get("mod_roots", []))
 
         return cls(
             name=raw["name"],
@@ -136,4 +186,8 @@ class ExperimentConfig:
             chunk_size=chunking.get("chunk_size", 256),
             chunk_overlap=chunking.get("chunk_overlap", 50),
             alpha=retrieval.get("alpha", 0.5),
+            game_files=game_files,
+            game_files_txt=game_files_txt,
+            vanilla_roots=vanilla_roots,
+            mod_roots=mod_roots,
         )

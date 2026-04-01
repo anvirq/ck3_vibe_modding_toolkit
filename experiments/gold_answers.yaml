@@ -1,0 +1,88 @@
+gold:
+  g01:
+    file_path_contains:
+      - "common/scripted_effects/"
+    must_contain_all:
+      - "add_prestige"
+
+  g02:
+    file_path_contains:
+      - "common/on_action/travel_on_actions.txt"
+    must_contain_all:
+      - "on_travel_plan_complete"
+
+  g03:
+    file_path_contains:
+      - "common/scripted_triggers/00_scripted_triggers.txt"
+    must_contain_all:
+      - "is_ruler"
+
+  g04:
+    file_path_contains:
+      - "common/traits/00_traits.txt"
+    must_contain_all:
+      - "monthly_prestige"
+
+  g05:
+    file_path_contains:
+      - "common/decisions/"
+    must_contain_all:
+      - "is_shown"
+      - "is_landed"
+
+  g06:
+    file_path_contains:
+      - "common/on_action/child_birth_on_actions.txt"
+    must_contain_all:
+      - "on_birth"
+
+  g07:
+    file_path_contains:
+      - "common/decisions/00_artifact_decisions.txt"
+    must_contain_all:
+      - "commission_artifact"
+      - "antiquarian"
+
+  g08:
+    file_path_contains:
+      - "events/birth_events.txt"
+    must_contain_all:
+      - "character_event"
+      - "type ="
+
+  w01:
+    file_path_contains:
+      - "Event_modding.md"
+    must_contain_all:
+      - "event"
+      - "character"
+
+  w02:
+    file_path_contains:
+      - "Event_modding.md"
+    must_contain_all:
+      - "option"
+      - "name ="
+
+  w03:
+    file_path_contains:
+      - "Decisions_modding.md"
+    must_contain_all:
+      - "is_shown"
+      - "is_valid"
+
+  w04:
+    file_path_contains:
+      - "Triggers.md"
+      - "Scripted_effects.md"
+    must_contain_all:
+      - "scripted"
+      - "trigger"
+
+  w05:
+    file_path_contains:
+      - "Effects.md"
+      - "Effects_list.md"
+    must_contain_all:
+      - "add_character_modifier"
+      - "duration"

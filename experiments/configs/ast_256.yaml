@@ -1,0 +1,28 @@
+name: ast_256
+description: "AST-aware chunking (256 tok) — splits at assignment boundaries rather than mid-sentence. Preserves semantic units like option={} blocks."
+
+data:
+  common_categories:
+    - decisions
+    - on_action
+    - scripted_triggers
+    - scripted_effects
+    - traits
+    - modifiers
+  include_events: true
+  include_gui: false
+  wiki_files:
+    - Event_modding.md
+    - Effects.md
+    - Effects_list.md
+    - Triggers.md
+    - Decisions_modding.md
+    - Scripted_effects.md
+
+chunking:
+  strategy: ast
+  chunk_size: 256
+  chunk_overlap: 0   # AST chunker groups whole statements; overlap not applicable
+
+retrieval:
+  alpha: 0.5

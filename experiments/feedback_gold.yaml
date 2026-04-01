@@ -1,0 +1,86 @@
+# Per-query grading. Optional fields:
+#   scorable: include in aggregate (false = N/A in this repo or mod-only without data/mod)
+#   acceptable_path_substrings: any match on file_path counts as relevant for noise / top3
+#   top1_path_substrings: stricter subset for "top1 correct"
+#   top1_text_must_contain_all: all substrings must appear in top-1 chunk (case-insensitive)
+#   top3_text_must_contain_any: at least one for top-3 recall variant
+#   false_positive_guard: special handling (fq9)
+
+gold:
+  fq1:
+    scorable: true
+    acceptable_path_substrings:
+      - "common/on_action/travel_on_actions.txt"
+    top1_path_substrings:
+      - "travel_on_actions.txt"
+    top1_text_must_contain_all:
+      - "on_travel_plan_complete"
+
+  fq2:
+    scorable: false
+    note: "travel_start_event / travel_events subtree not present in this repo snapshot."
+    acceptable_path_substrings:
+      - "travel_start_events.txt"
+    top1_text_must_contain_all:
+      - "travel_start_event.1000"
+
+  fq3:
+    scorable: false
+    note: "Requires files under data/mod/ (not shipped in this workspace)."
+    acceptable_path_substrings:
+      - "mod/"
+      - "travel_completion_events.txt"
+
+  fq4:
+    scorable: true
+    acceptable_path_substrings:
+      - "travel_on_actions.txt"
+    top1_text_must_contain_any:
+      - "is_ruler"
+      - "on_travel_plan_complete"
+      - "travel_completion_event.1000"
+
+  fq5:
+    scorable: true
+    acceptable_path_substrings:
+      - "window_army_select_commander.gui"
+    top1_path_substrings:
+      - "window_army_select_commander.gui"
+    top1_text_must_contain_any:
+      - "select_commander"
+      - "CSelectCommanderWindow"
+
+  fq6:
+    scorable: false
+    note: "Mod-specific TTC symbols; needs data/mod/."
+    acceptable_path_substrings:
+      - "ttc_commander"
+      - "ttc_pending_army"
+
+  fq7:
+    scorable: false
+    note: "Localization + mod events; needs data/mod/."
+    acceptable_path_substrings:
+      - "ttc_l_english"
+      - "travel_completion_events.txt"
+
+  fq8:
+    scorable: false
+    note: "Expects mod on_action + mod events; optional vanilla on_travel_plan_arrival as partial."
+    acceptable_path_substrings:
+      - "ttc_travel_on_actions.txt"
+      - "ttc_travel_events.txt"
+      - "travel_on_actions.txt"
+
+  fq9:
+    scorable: true
+    false_positive_guard: true
+    note: "Should not surface a fake in-game definition; wiki or low-signal OK."
+
+  fq10:
+    scorable: true
+    acceptable_path_substrings:
+      - "travel_on_actions.txt"
+    top1_text_must_contain_any:
+      - "on_travel_plan_start"
+      - "travel_plan_start"

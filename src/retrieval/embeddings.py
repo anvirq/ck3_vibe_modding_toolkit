@@ -3,6 +3,7 @@ Custom LlamaIndex embedding class using Qwen3 Embedding via OpenRouter.
 OpenRouter exposes an OpenAI-compatible /embeddings endpoint.
 """
 
+import concurrent.futures
 from typing import List, Optional
 import openai
 from llama_index.core.embeddings import BaseEmbedding
@@ -24,6 +25,7 @@ class QwenOpenRouterEmbedding(BaseEmbedding):
     api_base: str = Field(default=OPENROUTER_BASE_URL)
     dimensions: Optional[int] = Field(default=EMBEDDING_DIMENSIONS)
     batch_size: int = Field(default=32)
+    max_concurrent: int = Field(default=20)
     # Query-side Instruct: text per index (game vs wiki); indexing pipeline leaves default "".
     query_instruction: str = Field(default="")
 
@@ -64,10 +66,15 @@ class QwenOpenRouterEmbedding(BaseEmbedding):
         return [item.embedding for item in items]
 
     def _embed_batch(self, texts: List[str]) -> List[List[float]]:
-        results: List[List[float]] = []
-        for i in range(0, len(texts), self.batch_size):
-            results.extend(self._call_api(texts[i : i + self.batch_size]))
-        return results
+        batches = [texts[i : i + self.batch_size] for i in range(0, len(texts), self.batch_size)]
+        if len(batches) <= 1:
+            return self._call_api(batches[0]) if batches else []
+        results: List[Optional[List[List[float]]]] = [None] * len(batches)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_concurrent) as pool:
+            futures = {pool.submit(self._call_api, batch): idx for idx, batch in enumerate(batches)}
+            for fut in concurrent.futures.as_completed(futures):
+                results[futures[fut]] = fut.result()
+        return [emb for batch_result in results for emb in batch_result]
 
     # ── required LlamaIndex interface ───────────────────────────────────────
 
